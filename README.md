@@ -1,228 +1,373 @@
-# Production Auth Backend System
+# 🔐 Production Auth Backend System
 
-Production-grade authentication backend built with Node.js, Express.js, PostgreSQL, Prisma ORM, Redis, JWT, and Argon2id.
+> **A secure, modular, production-oriented authentication infrastructure for modern applications.**
 
----
+A reusable authentication backend engineered with **Node.js, TypeScript, Express.js, PostgreSQL, Prisma ORM, Redis, JWT, and Argon2id** — built to handle the hard parts of authentication (identity, sessions, token security, account protection, password recovery, email verification, and auditing) while keeping application-specific business logic completely separate.
 
-## Table of Contents
+<div align="center">
 
-- [Overview](#overview)
-- [Key Features](#key-features)
-- [Technology Stack](#technology-stack)
-- [Architecture & Authentication Flow](#architecture--authentication-flow)
-- [API Endpoints](#api-endpoints)
-- [Environment Variables](#environment-variables)
-- [Database & Prisma Setup](#database--prisma-setup)
-- [Redis Integration](#redis-integration)
-- [Local Development Setup](#local-development-setup)
-- [Interactive Swagger Documentation](#interactive-swagger-documentation)
-- [Security Features](#security-features)
-- [Documentation Index](#documentation-index)
+**Authentication · Sessions · Tokens · Security · Recovery · Auditing**
+
+</div>
 
 ---
 
-## Overview
+## ✦ Why This Project?
 
-The **Production Auth Backend System** is an enterprise-ready, standalone authentication microservice designed to provide secure identity, session, and credential management for modern web and mobile applications. It implements dual-token (JWT + rotated refresh token) lifecycle management, cryptographic hashing, account lockout mechanisms, and compliance audit logging.
+Authentication is more than a `login` endpoint. A real system has to safely manage identity, credentials, sessions, token rotation, account security, and an audit trail — all without leaking implementation details into the rest of the application.
 
----
-
-## Key Features
-
-- **Dual-Token Authentication**: Short-lived JWT Access Tokens (15 min) paired with single-use, rotated Refresh Tokens (7 days).
-- **Refresh Token Rotation & Reuse Detection**: Automatic breach containment revokes all active user sessions if a compromised refresh token is replayed.
-- **Argon2id & Bcrypt Password Hashing**: Memory-hard password hashing with GPU resistance and side-channel timing attack mitigation.
-- **Prisma ORM & PostgreSQL**: 100% type-safe database queries with structured migrations, connection pooling, and relational schemas.
-- **Session Management & Device Tracking**: Multi-device support with IP logging, user-agent parsing, and granular remote session revocation.
-- **Account Lockout Protection**: Automatic account lockout following consecutive failed login attempts to neutralize brute-force attacks.
-- **Email Verification & Password Reset**: Secure token workflows stored with SHA-256 database hashing.
-- **Security Audit Logging**: Structured security event logging tracking sensitive actions and identity events.
-- **OpenAPI 3.0 / Swagger UI**: Built-in interactive API documentation at `/docs` and raw JSON spec at `/docs.json`.
-- **Production Defense**: Helmet security headers, CORS origin whitelisting, HTTP-only SameSite cookies, request ID tracing, and rate limiting.
+This project is designed as a **reusable authentication foundation** you can drop into SaaS platforms, dashboards, portals, and other backend systems, so you build authentication once and reuse it everywhere.
 
 ---
 
-## Technology Stack
+## 🚀 Core Capabilities
 
-- **Runtime**: Node.js (v18+) & TypeScript (v5+)
-- **Web Framework**: Express.js
-- **Database & ORM**: PostgreSQL & Prisma ORM (@prisma/client, @prisma/adapter-pg)
-- **Caching & KV Store**: Redis (ioredis) with standalone resilience fallback
-- **Authentication**: JSON Web Tokens (jsonwebtoken), Argon2 (argon2), Bcrypt (bcryptjs)
-- **Validation**: Zod schema validation
-- **Security**: Helmet, CORS, Cookie-Parser, Express-Rate-Limit
-- **Logging**: Pino & Pino-HTTP structured asynchronous logging
-- **Documentation**: Swagger UI Express & OpenAPI 3.0.3
+| Domain | Capabilities |
+|---|---|
+| 🔑 Authentication | Registration, Login, Logout, JWT Authentication |
+| 🎫 Token Security | Access Tokens, Refresh Tokens, Rotation, Reuse Detection |
+| 👤 Identity | Current User, Account Status, Email Verification |
+| 🔐 Password | Change Password, Forgot Password, Secure Reset |
+| 🖥️ Sessions | Multi-Session Tracking, Session Revocation, Logout All |
+| 🛡️ Security | Rate Limiting, Helmet, CORS, Secure Cookies |
+| 🚨 Account Protection | Failed Login Tracking, Temporary Lockout |
+| 📋 Auditing | Authentication & Security Event Logging |
+| ⚡ Infrastructure | PostgreSQL, Prisma ORM, Redis |
+| 📖 API | Versioned REST API, OpenAPI / Swagger |
 
 ---
 
-## Architecture & Authentication Flow
-
-### Dual-Token Lifecycle
+## 🧠 Architecture
 
 ```
-[Client]                                                          [Server]
-   │                                                                 │
-   │── 1. POST /api/v1/auth/login (email, password) ────────────────►│
-   │                                                                 ├─ Verify Argon2id Hash
-   │                                                                 ├─ Issue Access Token (15m, JWT)
-   │                                                                 ├─ Issue Refresh Token (7d, Opaque)
-   │                                                                 └─ Save SHA-256(RefreshToken) in DB
-   │◄── 2. Return Access Token & Set HttpOnly Refresh Cookie ────────│
-   │                                                                 │
-   │── 3. GET /api/v1/auth/me (Bearer Access Token) ────────────────►│
-   │                                                                 ├─ Verify JWT & Check User Status
-   │◄── 4. Return User Identity ─────────────────────────────────────│
-   │                                                                 │
-   │ (Access Token Expires after 15m)                                │
-   │                                                                 │
-   │── 5. POST /api/v1/auth/refresh (Cookie or Body) ───────────────►│
-   │                                                                 ├─ Hash token & locate Session
-   │                                                                 ├─ Check Revocation (Reuse Detection)
-   │                                                                 ├─ Invalidate old & issue new token
-   │◄── 6. Return New Access Token + Rotated Refresh Token ──────────│
+Client
+  │
+  ▼
+Express API
+  │
+  ▼
+Middleware  →  Validation · Security · Rate Limit · Auth · RBAC
+  │
+  ▼
+Controller
+  │
+  ▼
+Service
+  │
+  ▼
+Repository
+  │
+  ▼
+Prisma ORM
+  │
+  ▼
+PostgreSQL
+
+Redis  →  Security State · Rate Limiting · Token State
 ```
 
 ---
 
-## API Endpoints
+## 🔐 Security Model
 
-### System Probes
-| Method | Endpoint | Description | Access |
-| :--- | :--- | :--- | :--- |
-| `GET` | `/health` | Liveness health check | Public |
-| `GET` | `/ready` | Database & Redis readiness status | Public |
-| `GET` | `/docs` | Interactive Swagger UI documentation | Public |
-| `GET` | `/docs.json` | OpenAPI 3.0.3 JSON Specification | Public |
+**Password Security**
+- Argon2id password hashing
+- Passwords never stored or exposed in plaintext
+- Centralized password policy
+- Secure password change / reset flows
 
-### Authentication Routes (`/api/v1/auth`)
-| Method | Endpoint | Description | Auth Required |
-| :--- | :--- | :--- | :--- |
-| `POST` | `/api/v1/auth/register` | Register new user account | No (Rate Limited) |
-| `POST` | `/api/v1/auth/login` | Authenticate user & issue tokens | No (Rate Limited) |
-| `POST` | `/api/v1/auth/refresh` | Rotate refresh token for new access token | No / Cookie |
-| `POST` | `/api/v1/auth/verify-email` | Verify email with confirmation token | No |
-| `POST` | `/api/v1/auth/resend-verification` | Resend verification email | No (Rate Limited) |
-| `POST` | `/api/v1/auth/logout` | Revoke current session & clear cookies | Bearer JWT |
-| `POST` | `/api/v1/auth/logout-all` | Revoke all active sessions across all devices | Bearer JWT |
-| `GET` | `/api/v1/auth/me` | Fetch authenticated user profile & roles | Bearer JWT |
-| `GET` | `/api/v1/auth/sessions` | List active sessions and device info | Bearer JWT |
-| `DELETE` | `/api/v1/auth/sessions/:id` | Revoke a specific active session | Bearer JWT |
-| `POST` | `/api/v1/auth/forgot-password` | Request password reset token | No (Rate Limited) |
-| `POST` | `/api/v1/auth/reset-password` | Reset password using reset token | No (Rate Limited) |
-| `POST` | `/api/v1/auth/change-password` | Change password for logged-in user | Bearer JWT |
+**Token Security**
+- Short-lived JWT access tokens
+- Opaque, hashed refresh tokens
+- Refresh token rotation
+- Refresh token reuse detection
+- Redis-backed security state
+- Secure HttpOnly cookie support
+
+**Account Protection**
+- Failed login tracking
+- Temporary account lockout
+- Generic authentication errors (no user enumeration)
+- Timing-attack protection
+- Rate limiting on auth endpoints
 
 ---
 
-## Environment Variables
+## 🔄 Token Lifecycle
 
-Copy `.env.example` to create your local `.env` configuration:
+```
+Login → Verify Credentials → Create Session
+                                   │
+                    ┌──────────────┴──────────────┐
+                    ▼                              ▼
+             Access Token                   Refresh Token
+             (short-lived)                  (long-lived, HttpOnly cookie)
+                    │
+                    ▼
+             API Requests → JWT Middleware → Authenticated User
 
-| Variable | Description | Default |
-| :--- | :--- | :--- |
-| `NODE_ENV` | Runtime environment (`development`, `production`, `test`) | `development` |
-| `PORT` | Server listening port | `5000` |
-| `DATABASE_URL` | PostgreSQL connection string | *Required* |
-| `REDIS_URL` | Redis connection string | `redis://localhost:6379` |
-| `REDIS_ENABLED` | Toggle Redis connection (`true` / `false`) | `false` |
-| `JWT_ACCESS_SECRET` | Secret key for signing JWT access tokens (min 16 chars) | *Required in Prod* |
-| `JWT_REFRESH_SECRET` | Secret key for signing refresh tokens (min 16 chars) | *Required in Prod* |
-| `JWT_ACCESS_EXPIRES_IN` | Access token lifespan | `15m` |
-| `JWT_REFRESH_EXPIRES_IN` | Refresh token lifespan | `7d` |
-| `COOKIE_SECRET` | Secret key for signing cookies | *Required in Prod* |
-| `ALLOWED_ORIGINS` | Comma-separated list of allowed CORS origins | `http://localhost:3000,http://localhost:5173` |
-| `MAX_LOGIN_ATTEMPTS` | Failed attempts before temporary account lockout | `5` |
-| `LOCKOUT_DURATION_MINUTES` | Account lockout duration in minutes | `15` |
-| `RATE_LIMIT_WINDOW_MS` | General rate limit window in milliseconds | `900000` (15m) |
-| `RATE_LIMIT_MAX` | Max general requests per rate limit window | `100` |
-| `AUTH_RATE_LIMIT_MAX` | Max auth requests per rate limit window | `15` |
-| `EMAIL_PROVIDER` | Email driver (`console`, `mock`, `smtp`, `sendgrid`) | `console` |
-| `EMAIL_FROM` | Default sender email address | `noreply@authservice.local` |
+On Expiry → Refresh Endpoint → Validate Session
+                                   │
+                                   ▼
+                         Rotate Refresh Token
+                                   │
+                                   ▼
+                     New Access Token + New Refresh Token
+```
 
----
+### 🛡️ Refresh Token Reuse Detection
 
-## Database & Prisma Setup
+A previously rotated-out refresh token must never silently become valid again.
 
-This project uses **Prisma ORM** with PostgreSQL.
+```
+Old Refresh Token Used Again
+            │
+            ▼
+     Reuse Detected
+            │
+            ▼
+  Revoke Entire Session Family
+            │
+            ▼
+   Create Security Audit Event
+```
 
-1. **Push Schema to Database**:
-   ```bash
-   npx prisma db push
-   ```
-
-2. **Generate Prisma Client**:
-   ```bash
-   npx prisma generate
-   ```
-
-3. **Seed Initial Roles & Admin (Optional)**:
-   ```bash
-   npm run prisma:seed
-   ```
+This protects against stolen refresh tokens being replayed after rotation.
 
 ---
 
-## Redis Integration
+## 👥 Session Management
 
-- **Session Caching & Blacklisting**: Used for high-speed token and session state lookups.
-- **Fault-Tolerant Fallback**: If Redis is not enabled or becomes unreachable, the service gracefully degrades to standalone mode and queries PostgreSQL directly without throwing fatal errors.
+Each session can track: **device, IP address, user agent, last used, created at, expiration, and revocation status.**
+
+- View active sessions
+- Revoke an individual session
+- Logout from all sessions at once
 
 ---
 
-## Local Development Setup
+## 📧 Account Recovery
 
-### 1. Prerequisites
-- Node.js (v18.0.0 or higher)
-- PostgreSQL (Local or Cloud instance e.g., Neon, Supabase, AWS RDS)
-- Redis (Optional, local instance or Redis Cloud)
+**Email Verification**
+```
+Register → Verification Token → Hashed & Stored → Email Sent → Account Verified
+```
 
-### 2. Installation
+**Password Reset**
+```
+Forgot Password → Secure Reset Token → Hashed & Stored → Reset Password
+                                                                  │
+                                                                  ▼
+                                          Invalidate Token + Revoke Sessions
+```
+
+Sensitive tokens are never stored in plaintext.
+
+---
+
+## 📋 Security Audit Trail
+
+Every authentication-relevant event is recorded:
+
+`REGISTER` · `LOGIN_SUCCESS` · `LOGIN_FAILED` · `LOGOUT` · `LOGOUT_ALL` · `REFRESH_SUCCESS` · `REFRESH_REUSE_DETECTED` · `PASSWORD_CHANGED` · `PASSWORD_RESET_REQUESTED` · `PASSWORD_RESET_COMPLETED` · `EMAIL_VERIFIED` · `ACCOUNT_LOCKED` · `SESSION_REVOKED`
+
+Records include user, IP address, user agent, event type, timestamp, and safe metadata — **secrets and tokens are never logged.**
+
+---
+
+## 🧩 Project Structure
+
+```
+src/
+├── config/          → env, database, redis, logger
+├── modules/         → auth, users, sessions, password, verification, audit
+├── middleware/       → auth, role, permission, rate-limit, validation, error, security
+├── services/         → token, password, redis, email
+├── errors/
+├── types/
+├── utils/
+├── routes/
+├── docs/              → swagger.ts
+├── app.ts
+└── server.ts
+
+prisma/
+├── migrations/
+├── schema.prisma
+└── seed.ts
+```
+
+---
+
+## 🛠️ Technology Stack
+
+**Backend** — Node.js · TypeScript · Express.js
+**Database** — PostgreSQL · Prisma ORM
+**Auth & Security** — JWT · Argon2id · Redis · Zod · Helmet · CORS · HttpOnly Cookies
+**Observability** — Pino · Request IDs · Health/Readiness Endpoints · Audit Logs
+**Documentation** — OpenAPI · Swagger UI
+
+---
+
+## 📡 API Reference
+
+Base URL: `http://localhost:5000`
+
+**Authentication**
+```
+POST   /api/v1/auth/register
+POST   /api/v1/auth/login
+POST   /api/v1/auth/refresh
+POST   /api/v1/auth/logout
+POST   /api/v1/auth/logout-all
+GET    /api/v1/auth/me
+```
+
+**Email Verification**
+```
+POST   /api/v1/auth/verify-email
+POST   /api/v1/auth/resend-verification
+```
+
+**Password**
+```
+POST   /api/v1/auth/forgot-password
+POST   /api/v1/auth/reset-password
+POST   /api/v1/auth/change-password
+```
+
+**Sessions**
+```
+GET    /api/v1/auth/sessions
+DELETE /api/v1/auth/sessions/:sessionId
+```
+
+Interactive docs: `http://localhost:5000/docs`
+OpenAPI spec: `http://localhost:5000/docs.json`
+
+---
+
+## ⚙️ Environment Configuration
+
+Create a `.env` file from `.env.example`:
+
+```env
+NODE_ENV=development
+PORT=5000
+
+DATABASE_URL=
+REDIS_URL=
+
+JWT_ACCESS_SECRET=
+JWT_REFRESH_SECRET=
+JWT_ACCESS_EXPIRES_IN=15m
+JWT_REFRESH_EXPIRES_IN=7d
+
+ALLOWED_ORIGINS=
+
+MAX_LOGIN_ATTEMPTS=5
+LOCKOUT_DURATION_MINUTES=15
+
+RATE_LIMIT_WINDOW_MS=
+RATE_LIMIT_MAX=
+
+EMAIL_PROVIDER=
+EMAIL_FROM=
+```
+
+⚠️ Never commit `.env` or production credentials to version control.
+
+---
+
+## 🗄️ Database
+
+Core entities, managed through Prisma migrations:
+
+```
+User
+ ├── Session
+ ├── EmailVerificationToken
+ ├── PasswordResetToken
+ └── AuditLog
+
+Role
+ └── Permission
+```
+
+## ⚡ Redis
+
+Used for temporary, non-persistent authentication state: rate limiting, token security state, JTI blacklisting. PostgreSQL remains the source of truth for persistent data.
+
+## 🏥 Health & Readiness
+
+```
+GET /health   → application liveness
+GET /ready    → verifies PostgreSQL and Redis connectivity
+```
+
+---
+
+## ▶️ Getting Started
+
 ```bash
+# 1. Clone
+git clone https://github.com/jeromelarens/production-auth-backend-system.git
+cd production-auth-backend-system
+
+# 2. Install dependencies
 npm install
-```
 
-### 3. Environment Configuration
-```bash
+# 3. Configure environment
 cp .env.example .env
-# Update .env with your PostgreSQL credentials
-```
+# → add your PostgreSQL and Redis configuration
 
-### 4. Database Initialization
-```bash
+# 4. Generate Prisma Client
 npx prisma generate
-npx prisma db push
-```
 
-### 5. Start Development Server
-```bash
+# 5. Run migrations
+npx prisma migrate dev
+
+# 6. Start development server
 npm run dev
 ```
 
-The server will be available at `http://localhost:5000`.
+Server: `http://localhost:5000`
+Swagger: `http://localhost:5000/docs`
 
 ---
 
-## Interactive Swagger Documentation
+## 🧭 Design Principles
 
-- **Swagger UI**: [http://localhost:5000/docs](http://localhost:5000/docs)
-- **OpenAPI 3.0 Specification**: [http://localhost:5000/docs.json](http://localhost:5000/docs.json)
+Security First → Explicit Boundaries → Modular Design → Minimal Coupling → Strong Validation → Auditable Authentication → Reusable Infrastructure
+
+The authentication layer is intentionally separated from application-specific business logic.
+
+## 🎯 Intended Use
+
+Built to integrate into SaaS applications, e-commerce platforms, job portals, learning platforms, enterprise applications, admin dashboards, and mobile application backends.
+
+> Build authentication once. Reuse it across applications.
+
+## 📌 Project Status
+
+**Production-oriented authentication infrastructure.**
+
+Designed around secure authentication flows, modular architecture, session security, token lifecycle management, account recovery, and auditing. Before deploying to a real production environment, configure environment-specific secrets, infrastructure security, transactional email delivery, database security, and operational monitoring.
 
 ---
 
-## Security Features
+## 👨‍💻 Author
 
-1. **Argon2id Hashing**: High memory and computation cost preventing offline GPU and ASIC dictionary attacks.
-2. **SHA-256 Token Storage**: Plaintext tokens (refresh, reset, verification) are never stored in the database.
-3. **HTTP-Only Cookies**: Refresh tokens are isolated from client-side JavaScript, protecting against XSS exploitation.
-4. **Brute-Force & Lockout Defenses**: Tiered IP rate limiting with account-level lockouts.
-5. **Audit Logging**: Comprehensive security event recording for incident response and compliance.
-6. **Request ID Tracking**: Every HTTP request receives an `x-request-id` header for end-to-end tracing across distributed services.
+**Jerome Larens**
+Backend developer focused on building secure and scalable backend systems.
 
----
+[GitHub](https://github.com/jeromelarens)
 
-## Documentation Index
+<div align="center">
 
-- [API Reference](docs/API.md)
-- [Authentication Architecture & Mechanics](docs/AUTHENTICATION.md)
-- [Security Model & Threat Mitigation](docs/SECURITY.md)
-- [System Architecture & Design](docs/ARCHITECTURE.md)
+🔐 *Identity is the foundation of every application.*
+
+**Production Auth Backend System**
+Built with security. Designed for reuse. Engineered for scale.
+
+</div>
